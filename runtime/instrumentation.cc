@@ -114,6 +114,9 @@ bool Instrumentation::NeedDebugVersionForBootImageCode(ArtMethod* method, const 
 }
 
 void Instrumentation::InstallStubsForMethod(ArtMethod* method) {
+  if (UNLIKELY(method->IsXposedHookedMethod())) {
+    method = method->GetXposedOriginalMethod();
+  }
   if (!method->IsInvokable() || method->IsProxyMethod()) {
     // Do not change stubs for these methods.
     return;

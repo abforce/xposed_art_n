@@ -26,6 +26,7 @@
 #include "modifiers.h"
 #include "mirror/object.h"
 #include "read_barrier_option.h"
+#include "scoped_thread_state_change.h"
 #include "stack.h"
 #include "utils.h"
 
@@ -37,6 +38,12 @@ class ProfilingInfo;
 class ScopedObjectAccessAlreadyRunnable;
 class StringPiece;
 class ShadowFrame;
+
+struct XposedHookInfo {
+  jobject reflectedMethod;
+  jobject additionalInfo;
+  ArtMethod* originalMethod;
+};
 
 namespace mirror {
 class Array;
@@ -285,12 +292,15 @@ class ArtMethod FINAL {
   }
 
   // Returns true if the method is static, private, or a constructor.
-  bool IsDirect() {
-    return IsDirect(GetAccessFlags());
+  bool IsDirect(bool ignore_xposed = false){
+    return IsDirect(GetAccessFlags(), ignore_xposed);
   }
 
-  static bool IsDirect(uint32_t access_flags) {
-    constexpr uint32_t direct = kAccStatic | kAccPrivate | kAccConstructor;
+  static bool IsDirect(uint32_t access_flags, bool ignore_xposed = false) {
+    uint32_t direct = kAccStatic | kAccPrivate | kAccConstructor;
+    if (LIKELY(!ignore_xposed)) {
+      direct |= kAccXposedOriginalMethod;
+    }
     return (access_flags & direct) != 0;
   }
 
@@ -356,7 +366,7 @@ class ArtMethod FINAL {
     return (GetAccessFlags() & kAccSynthetic) != 0;
   }
 
-  bool IsProxyMethod() SHARED_REQUIRES(Locks::mutator_lock_);
+  bool IsProxyMethod(bool ignore_xposed = false) SHARED_REQUIRES(Locks::mutator_lock_);
 
   bool SkipAccessChecks() {
     return (GetAccessFlags() & kAccSkipAccessChecks) != 0;
@@ -486,6 +496,10 @@ class ArtMethod FINAL {
   }
   ALWAYS_INLINE void SetEntryPointFromQuickCompiledCodePtrSize(
       const void* entry_point_from_quick_compiled_code, size_t pointer_size) {
+    if (kIsDebugBuild) {
+      ScopedObjectAccess soa(Thread::Current());
+      CHECK(Runtime::Current()->IsAotCompiler() || !IsXposedHookedMethod());
+    }
     SetNativePointer(EntryPointFromQuickCompiledCodeOffset(pointer_size),
                      entry_point_from_quick_compiled_code, pointer_size);
   }
@@ -695,6 +709,29 @@ class ArtMethod FINAL {
   // Update entry points by passing them through the visitor.
   template <ReadBarrierOption kReadBarrierOption = kWithReadBarrier, typename Visitor>
   ALWAYS_INLINE void UpdateEntrypoints(const Visitor& visitor, size_t pointer_size);
+
+  // Xposed
+  bool IsXposedHookedMethod() SHARED_REQUIRES(Locks::mutator_lock_) {
+    return (GetAccessFlags() & kAccXposedHookedMethod) != 0;
+  }
+
+  bool IsXposedOriginalMethod() SHARED_REQUIRES(Locks::mutator_lock_) {
+    return (GetAccessFlags() & kAccXposedOriginalMethod) != 0;
+  }
+
+  void EnableXposedHook(ScopedObjectAccess& soa, jobject additional_info) SHARED_REQUIRES(Locks::mutator_lock_);
+
+  const XposedHookInfo* GetXposedHookInfo() SHARED_REQUIRES(Locks::mutator_lock_) {
+    DCHECK(IsXposedHookedMethod());
+    return reinterpret_cast<const XposedHookInfo*>(GetEntryPointFromJni());
+  }
+
+  ArtMethod* GetXposedOriginalMethod() SHARED_REQUIRES(Locks::mutator_lock_) {
+    return GetXposedHookInfo()->originalMethod;
+  }
+
+  static jclass xposed_callback_class;
+  static jmethodID xposed_callback_method;
 
  protected:
   // Field order required by test "ValidateFieldOrderOfJavaCppUnionClasses".
