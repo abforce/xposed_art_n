@@ -1,0 +1,2 @@
+ERROR: Dex writing phase: classes.dex has too many IDs. Try using multi-dex
+build exit status: 4

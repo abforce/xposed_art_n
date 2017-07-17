@@ -1,0 +1,80 @@
+<!--
+Copyright (C) 2015 The Android Open Source Project
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<h1>Help</h1>
+<h2>Information shown by ahat:</h2>
+<ul>
+  <li><a href="/">The total bytes retained by heap.</a></li>
+  <li><a href="/rooted">A list of rooted objects and their retained sizes for each heap.</a></li>
+  <li>Information about each allocated object:
+    <ul>
+      <li>The allocation site (stack trace) of the object (if available).</li>
+      <li>The dominator path from a root to the object.</li>
+      <li>The class, (shallow) size, retained size, and heap of the object.</li>
+      <li>The bitmap image for the object if the object represents a bitmap.</li>
+      <li>The instance fields or array elements of the object.</li>
+      <li>The super class, class loader, and static fields of class objects.</li>
+      <li>Other objects with references to the object.</li>
+      <li>Other objects immediately dominated by the object.</li>
+    </ul>
+  </li>
+  <li>A list of objects, optionally filtered by class, allocation site, and/or
+    heap.</li>
+  <li><a href="site">Information about each allocation site:</a>
+    <ul>
+      <li>The stack trace for the allocation site.</li>
+      <li>The number of bytes allocated at the allocation site.</li>
+      <li>Child sites called from the allocation site.</li>
+      <li>The size and count of objects allocated at the site, organized by
+        heap and object type.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>Tips:</h2>
+<h3>Heaps</h3>
+<p>
+Android heap dumps contain information for multiple heaps. The <b>app</b> heap
+is the memory used by your application. The <b>zygote</b> and <b>image</b>
+heaps are used by the system. You should ignore everything in the zygote and
+image heap and look only at the app heap. This is because changes in your
+application will not effect the zygote or image heaps, and because the zygote
+and image heaps are shared, they don't contribute significantly to your
+applications PSS.
+</p>
+
+<h3>Bitmaps</h3>
+<p>
+Bitmaps store their data using byte[] arrays. Whenever you see a large
+byte[], check if it is a bitmap by looking to see if there is a single
+android.graphics.Bitmap object referring to it. The byte[] will be marked as a
+root, but it is really being retained by the android.graphics.Bitmap object.
+</p>
+
+<h3>DexCaches</h3>
+<p>
+For each DexFile you load, there will be a corresponding DexCache whose size
+is proportional to the number of strings, fields, methods, and classes in your
+dex file. The DexCache entries may or may not be visible depending on the
+version of the Android platform the heap dump is from.
+</p>
+
+<h3>FinalizerReferences</h3>
+<p>
+A FinalizerReference is allocated for every object on the heap that has a
+non-trivial finalizer. These are stored in a linked list reachable from the
+FinalizerReference class object.
+</p>

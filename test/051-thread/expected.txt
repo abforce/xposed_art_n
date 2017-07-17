@@ -1,0 +1,15 @@
+JNI_OnLoad called
+thread test starting
+testThreadCapacity thread count: 512
+testThreadDaemons starting thread 'TestDaemonThread'
+testThreadDaemons @ Thread running
+testThreadDaemons @ Got expected setDaemon exception
+testThreadDaemons @ Thread bailing
+testThreadDaemons finished
+testSleepZero finished
+testSetName starting
+testSetName running
+testSetName finished
+testThreadPriorities starting
+testThreadPriorities finished
+thread test done

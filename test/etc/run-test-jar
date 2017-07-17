@@ -1,0 +1,624 @@
+#!/bin/bash
+#
+# Runner for an individual run-test.
+
+msg() {
+    if [ "$QUIET" = "n" ]; then
+        echo "$@"
+    fi
+}
+
+ANDROID_ROOT="/system"
+ARCHITECTURES_32="(arm|x86|mips|none)"
+ARCHITECTURES_64="(arm64|x86_64|mips64|none)"
+ARCHITECTURES_PATTERN="${ARCHITECTURES_32}"
+BOOT_IMAGE=""
+COMPILE_FLAGS=""
+DALVIKVM="dalvikvm32"
+DEBUGGER="n"
+DEV_MODE="n"
+DEX2OAT=""
+EXPERIMENTAL=""
+FALSE_BIN="/system/bin/false"
+FLAGS=""
+GDB=""
+GDB_ARGS=""
+GDB_SERVER="gdbserver"
+HAVE_IMAGE="y"
+HOST="n"
+INTERPRETER="n"
+JIT="n"
+INVOKE_WITH=""
+ISA=x86
+LIBRARY_DIRECTORY="lib"
+MAIN=""
+OPTIMIZE="y"
+PATCHOAT=""
+PREBUILD="y"
+QUIET="n"
+RELOCATE="y"
+STRIP_DEX="n"
+SECONDARY_DEX=""
+TIME_OUT="gdb"  # "n" (disabled), "timeout" (use timeout), "gdb" (use gdb)
+# Value in seconds
+if [ "$ART_USE_READ_BARRIER" = "true" ]; then
+  TIME_OUT_VALUE=900  # 15 minutes.
+else
+  TIME_OUT_VALUE=600  # 10 minutes.
+fi
+USE_GDB="n"
+USE_JVM="n"
+VERIFY="y" # y=yes,n=no,s=softfail
+ZYGOTE=""
+DEX_VERIFY=""
+USE_DEX2OAT_AND_PATCHOAT="y"
+INSTRUCTION_SET_FEATURES=""
+ARGS=""
+
+while true; do
+    if [ "x$1" = "x--quiet" ]; then
+        QUIET="y"
+        shift
+    elif [ "x$1" = "x--lib" ]; then
+        shift
+        if [ "x$1" = "x" ]; then
+            echo "$0 missing argument to --lib" 1>&2
+            exit 1
+        fi
+        LIB="$1"
+        shift
+    elif [ "x$1" = "x--gc-stress" ]; then
+        # Give an extra 5 mins if we are gc-stress.
+        TIME_OUT_VALUE=$((${TIME_OUT_VALUE} + 300))
+        shift
+    elif [ "x$1" = "x--testlib" ]; then
+        shift
+        if [ "x$1" = "x" ]; then
+            echo "$0 missing argument to --testlib" 1>&2
+            exit 1
+        fi
+        ARGS="${ARGS} $1"
+        shift
+    elif [ "x$1" = "x--args" ]; then
+        shift
+        if [ "x$1" = "x" ]; then
+            echo "$0 missing argument to --args" 1>&2
+            exit 1
+        fi
+        ARGS="${ARGS} $1"
+        shift
+    elif [ "x$1" = "x-Xcompiler-option" ]; then
+        shift
+        option="$1"
+        FLAGS="${FLAGS} -Xcompiler-option $option"
+        COMPILE_FLAGS="${COMPILE_FLAGS} $option"
+        shift
+    elif [ "x$1" = "x--runtime-option" ]; then
+        shift
+        option="$1"
+        FLAGS="${FLAGS} $option"
+        shift
+    elif [ "x$1" = "x--boot" ]; then
+        shift
+        BOOT_IMAGE="$1"
+        shift
+    elif [ "x$1" = "x--no-dex2oat" ]; then
+        DEX2OAT="-Xcompiler:${FALSE_BIN}"
+        USE_DEX2OAT_AND_PATCHOAT="n"
+        shift
+    elif [ "x$1" = "x--no-patchoat" ]; then
+        PATCHOAT="-Xpatchoat:${FALSE_BIN}"
+        USE_DEX2OAT_AND_PATCHOAT="n"
+        shift
+    elif [ "x$1" = "x--relocate" ]; then
+        RELOCATE="y"
+        shift
+    elif [ "x$1" = "x--no-relocate" ]; then
+        RELOCATE="n"
+        shift
+    elif [ "x$1" = "x--prebuild" ]; then
+        PREBUILD="y"
+        shift
+    elif [ "x$1" = "x--strip-dex" ]; then
+        STRIP_DEX="y"
+        shift
+    elif [ "x$1" = "x--host" ]; then
+        HOST="y"
+        ANDROID_ROOT="$ANDROID_HOST_OUT"
+        shift
+    elif [ "x$1" = "x--no-prebuild" ]; then
+        PREBUILD="n"
+        shift
+    elif [ "x$1" = "x--no-image" ]; then
+        HAVE_IMAGE="n"
+        shift
+    elif [ "x$1" = "x--secondary" ]; then
+        SECONDARY_DEX=":$DEX_LOCATION/$TEST_NAME-ex.jar"
+        # Enable cfg-append to make sure we get the dump for both dex files.
+        # (otherwise the runtime compilation of the secondary dex will overwrite
+        # the dump of the first one)
+        FLAGS="${FLAGS} -Xcompiler-option --dump-cfg-append"
+        COMPILE_FLAGS="${COMPILE_FLAGS} --dump-cfg-append"
+        shift
+    elif [ "x$1" = "x--debug" ]; then
+        DEBUGGER="y"
+        TIME_OUT="n"
+        shift
+    elif [ "x$1" = "x--gdb" ]; then
+        USE_GDB="y"
+        DEV_MODE="y"
+        TIME_OUT="n"
+        shift
+    elif [ "x$1" = "x--gdb-arg" ]; then
+        shift
+        gdb_arg="$1"
+        GDB_ARGS="${GDB_ARGS} $gdb_arg"
+        shift
+    elif [ "x$1" = "x--zygote" ]; then
+        ZYGOTE="-Xzygote"
+        msg "Spawning from zygote"
+        shift
+    elif [ "x$1" = "x--dev" ]; then
+        DEV_MODE="y"
+        shift
+    elif [ "x$1" = "x--interpreter" ]; then
+        INTERPRETER="y"
+        shift
+    elif [ "x$1" = "x--jit" ]; then
+        JIT="y"
+        shift
+    elif [ "x$1" = "x--jvm" ]; then
+        USE_JVM="y"
+        shift
+    elif [ "x$1" = "x--invoke-with" ]; then
+        shift
+        if [ "x$1" = "x" ]; then
+            echo "$0 missing argument to --invoke-with" 1>&2
+            exit 1
+        fi
+        if [ "x$INVOKE_WITH" = "x" ]; then
+            INVOKE_WITH="$1"
+        else
+            INVOKE_WITH="$INVOKE_WITH $1"
+        fi
+        shift
+    elif [ "x$1" = "x--no-verify" ]; then
+        VERIFY="n"
+        shift
+    elif [ "x$1" = "x--verify-soft-fail" ]; then
+        VERIFY="s"
+        shift
+    elif [ "x$1" = "x--no-optimize" ]; then
+        OPTIMIZE="n"
+        shift
+    elif [ "x$1" = "x--android-root" ]; then
+        shift
+        ANDROID_ROOT="$1"
+        shift
+    elif [ "x$1" = "x--instruction-set-features" ]; then
+        shift
+        INSTRUCTION_SET_FEATURES="$1"
+        shift
+    elif [ "x$1" = "x--" ]; then
+        shift
+        break
+    elif [ "x$1" = "x--64" ]; then
+        ISA="x86_64"
+        GDB_SERVER="gdbserver64"
+        DALVIKVM="dalvikvm64"
+        LIBRARY_DIRECTORY="lib64"
+        ARCHITECTURES_PATTERN="${ARCHITECTURES_64}"
+        shift
+    elif [ "x$1" = "x--pic-test" ]; then
+        FLAGS="${FLAGS} -Xcompiler-option --compile-pic"
+        COMPILE_FLAGS="${COMPILE_FLAGS} --compile-pic"
+        shift
+    elif [ "x$1" = "x--experimental" ]; then
+        if [ "$#" -lt 2 ]; then
+            echo "missing --experimental option" 1>&2
+            exit 1
+        fi
+        EXPERIMENTAL="$EXPERIMENTAL $2"
+        shift 2
+    elif expr "x$1" : "x--" >/dev/null 2>&1; then
+        echo "unknown $0 option: $1" 1>&2
+        exit 1
+    else
+        break
+    fi
+done
+
+if [ "$USE_JVM" = "n" ]; then
+    for feature in ${EXPERIMENTAL}; do
+        FLAGS="${FLAGS} -Xexperimental:${feature} -Xcompiler-option --runtime-arg -Xcompiler-option -Xexperimental:${feature}"
+        COMPILE_FLAGS="${COMPILE_FLAGS} --runtime-arg -Xexperimental:${feature}"
+    done
+fi
+
+if [ "x$1" = "x" ] ; then
+  MAIN="Main"
+else
+  MAIN="$1"
+  shift
+fi
+
+if [ "$ZYGOTE" = "" ]; then
+    if [ "$OPTIMIZE" = "y" ]; then
+        if [ "$VERIFY" = "y" ]; then
+            DEX_OPTIMIZE="-Xdexopt:verified"
+        else
+            DEX_OPTIMIZE="-Xdexopt:all"
+        fi
+        msg "Performing optimizations"
+    else
+        DEX_OPTIMIZE="-Xdexopt:none"
+        msg "Skipping optimizations"
+    fi
+
+    if [ "$VERIFY" = "y" ]; then
+        JVM_VERIFY_ARG="-Xverify:all"
+        msg "Performing verification"
+    elif [ "$VERIFY" = "s" ]; then
+        JVM_VERIFY_ARG="Xverify:all"
+        DEX_VERIFY="-Xverify:softfail"
+        msg "Forcing verification to be soft fail"
+    else # VERIFY = "n"
+        DEX_VERIFY="-Xverify:none"
+        JVM_VERIFY_ARG="-Xverify:none"
+        msg "Skipping verification"
+    fi
+fi
+
+msg "------------------------------"
+
+if [ "$DEBUGGER" = "y" ]; then
+  # Use this instead for ddms and connect by running 'ddms':
+  # DEBUGGER_OPTS="-agentlib:jdwp=transport=dt_android_adb,server=y,suspend=y"
+  # TODO: add a separate --ddms option?
+
+  PORT=12345
+  msg "Waiting for jdb to connect:"
+  if [ "$HOST" = "n" ]; then
+    msg "    adb forward tcp:$PORT tcp:$PORT"
+  fi
+  msg "    jdb -attach localhost:$PORT"
+  DEBUGGER_OPTS="-agentlib:jdwp=transport=dt_socket,address=$PORT,server=y,suspend=y"
+fi
+
+if [ "$USE_JVM" = "y" ]; then
+  # Xmx is necessary since we don't pass down the ART flags to JVM.
+  cmdline="${JAVA} ${DEBUGGER_OPTS} ${JVM_VERIFY_ARG} -Xmx256m -classpath classes ${FLAGS} $MAIN $@"
+  if [ "$DEV_MODE" = "y" ]; then
+    echo $cmdline
+  fi
+  $cmdline
+  exit
+fi
+
+
+if [ "$HAVE_IMAGE" = "n" ]; then
+    DALVIKVM_BOOT_OPT="-Ximage:/system/non-existant/core.art"
+else
+    DALVIKVM_BOOT_OPT="-Ximage:${BOOT_IMAGE}"
+fi
+
+
+if [ "$USE_GDB" = "y" ]; then
+  if [ "$HOST" = "n" ]; then
+    GDB="$GDB_SERVER :5039"
+  else
+    if [ `uname` = "Darwin" ]; then
+        GDB=lldb
+        GDB_ARGS="$GDB_ARGS -- $DALVIKVM"
+        DALVIKVM=
+    else
+        GDB=gdb
+        GDB_ARGS="$GDB_ARGS --args $DALVIKVM"
+        # Enable for Emacs "M-x gdb" support. TODO: allow extra gdb arguments on command line.
+        # gdbargs="--annotate=3 $gdbargs"
+    fi
+  fi
+fi
+
+if [ "$INTERPRETER" = "y" ]; then
+    INT_OPTS="-Xint"
+    if [ "$VERIFY" = "y" ] ; then
+      COMPILE_FLAGS="${COMPILE_FLAGS} --compiler-filter=interpret-only"
+    elif [ "$VERIFY" = "s" ]; then
+      COMPILE_FLAGS="${COMPILE_FLAGS} --compiler-filter=verify-at-runtime"
+      DEX_VERIFY="${DEX_VERIFY} -Xverify:softfail"
+    else # VERIFY = "n"
+      COMPILE_FLAGS="${COMPILE_FLAGS} --compiler-filter=verify-none"
+      DEX_VERIFY="${DEX_VERIFY} -Xverify:none"
+    fi
+fi
+
+if [ "$JIT" = "y" ]; then
+    INT_OPTS="-Xusejit:true"
+    if [ "$VERIFY" = "y" ] ; then
+      COMPILE_FLAGS="${COMPILE_FLAGS} --compiler-filter=verify-at-runtime"
+      if [ "$PREBUILD" = "n" ]; then
+        # Make sure that if we have noprebuild we still JIT as DexClassLoader will
+        # try to compile the dex file.
+        INT_OPTS="${INT_OPTS} -Xcompiler-option --compiler-filter=verify-at-runtime"
+      fi
+    else
+      COMPILE_FLAGS="${COMPILE_FLAGS} --compiler-filter=verify-none"
+      DEX_VERIFY="${DEX_VERIFY} -Xverify:none"
+      if [ "$PREBUILD" = "n" ]; then
+        INT_OPTS="${INT_OPTS} -Xcompiler-option --compiler-filter=verify-none"
+      fi
+    fi
+fi
+
+JNI_OPTS="-Xjnigreflimit:512 -Xcheck:jni"
+
+if [ "$RELOCATE" = "y" ]; then
+    COMPILE_FLAGS="${COMPILE_FLAGS} --include-patch-information --runtime-arg -Xnorelocate"
+    FLAGS="${FLAGS} -Xrelocate -Xcompiler-option --include-patch-information"
+    if [ "$HOST" = "y" ]; then
+        # Run test sets a fairly draconian ulimit that we will likely blow right over
+        # since we are relocating. Get the total size of the /system/framework directory
+        # in 512 byte blocks and set it as the ulimit. This should be more than enough
+        # room.
+        if [ ! `uname` = "Darwin" ]; then  # TODO: Darwin doesn't support "du -B..."
+          ulimit -S $(du -c -B512 ${ANDROID_HOST_OUT}/framework 2>/dev/null | tail -1 | cut -f1) || exit 1
+        fi
+    fi
+else
+    FLAGS="$FLAGS -Xnorelocate"
+    COMPILE_FLAGS="${COMPILE_FLAGS} --runtime-arg -Xnorelocate"
+    if [ "$HOST" = "y" ]; then
+        # Increase ulimit to 64MB in case we are running hprof test.
+        ulimit -S 64000 || exit 1
+    fi
+fi
+
+if [ "$HOST" = "n" ]; then
+  ISA=$(adb shell ls -F /data/dalvik-cache | grep -Ewo "${ARCHITECTURES_PATTERN}")
+  if [ x"$ISA" = "x" ]; then
+    echo "Unable to determine architecture"
+    exit 1
+  fi
+fi
+
+dex2oat_cmdline="true"
+mkdir_cmdline="mkdir -p ${DEX_LOCATION}/dalvik-cache/$ISA"
+strip_cmdline="true"
+
+# Pick a base that will force the app image to get relocated.
+app_image="--base=0x4000 --app-image-file=$DEX_LOCATION/oat/$ISA/$TEST_NAME.art"
+
+if [ "$PREBUILD" = "y" ]; then
+  mkdir_cmdline="${mkdir_cmdline} && mkdir -p ${DEX_LOCATION}/oat/$ISA"
+  dex2oat_cmdline="$INVOKE_WITH $ANDROID_ROOT/bin/dex2oatd \
+                      $COMPILE_FLAGS \
+                      --boot-image=${BOOT_IMAGE} \
+                      --dex-file=$DEX_LOCATION/$TEST_NAME.jar \
+                      --oat-file=$DEX_LOCATION/oat/$ISA/$TEST_NAME.odex \
+                      ${app_image} \
+                      --instruction-set=$ISA"
+  if [ "x$INSTRUCTION_SET_FEATURES" != "x" ] ; then
+    dex2oat_cmdline="${dex2oat_cmdline} --instruction-set-features=${INSTRUCTION_SET_FEATURES}"
+  fi
+
+  # Add in a timeout. This is important for testing the compilation/verification time of
+  # pathological cases.
+  # Note: as we don't know how decent targets are (e.g., emulator), only do this on the host for
+  #       now. We should try to improve this.
+  #       The current value is rather arbitrary. run-tests should compile quickly.
+  if [ "$HOST" != "n" ]; then
+    # Use SIGRTMIN+2 to try to dump threads.
+    # Use -k 1m to SIGKILL it a minute later if it hasn't ended.
+    dex2oat_cmdline="timeout -k 1m -s SIGRTMIN+2 1m ${dex2oat_cmdline}"
+  fi
+fi
+
+if [ "$STRIP_DEX" = "y" ]; then
+  strip_cmdline="zip --quiet --delete $DEX_LOCATION/$TEST_NAME.jar classes.dex"
+fi
+
+DALVIKVM_ISA_FEATURES_ARGS=""
+if [ "x$INSTRUCTION_SET_FEATURES" != "x" ] ; then
+  DALVIKVM_ISA_FEATURES_ARGS="-Xcompiler-option --instruction-set-features=${INSTRUCTION_SET_FEATURES}"
+fi
+
+# java.io.tmpdir can only be set at launch time.
+TMP_DIR_OPTION=""
+if [ "$HOST" = "n" ]; then
+  TMP_DIR_OPTION="-Djava.io.tmpdir=/data/local/tmp"
+fi
+
+# We set DumpNativeStackOnSigQuit to false to avoid stressing libunwind.
+# b/27185632
+# b/24664297
+dalvikvm_cmdline="$INVOKE_WITH $GDB $ANDROID_ROOT/bin/$DALVIKVM \
+                  $GDB_ARGS \
+                  $FLAGS \
+                  $DEX_VERIFY \
+                  -XXlib:$LIB \
+                  $PATCHOAT \
+                  $DEX2OAT \
+                  $DALVIKVM_ISA_FEATURES_ARGS \
+                  $ZYGOTE \
+                  $JNI_OPTS \
+                  $INT_OPTS \
+                  $DEBUGGER_OPTS \
+                  $DALVIKVM_BOOT_OPT \
+                  $TMP_DIR_OPTION \
+                  -XX:DumpNativeStackOnSigQuit:false \
+                  -cp $DEX_LOCATION/$TEST_NAME.jar$SECONDARY_DEX $MAIN $ARGS"
+
+# Remove whitespace.
+dex2oat_cmdline=$(echo $dex2oat_cmdline)
+dalvikvm_cmdline=$(echo $dalvikvm_cmdline)
+
+if [ "$HOST" = "n" ]; then
+    adb root > /dev/null
+    adb wait-for-device
+    if [ "$QUIET" = "n" ]; then
+      adb shell rm -r $DEX_LOCATION
+      adb shell mkdir -p $DEX_LOCATION
+      adb push $TEST_NAME.jar $DEX_LOCATION
+      adb push $TEST_NAME-ex.jar $DEX_LOCATION
+    else
+      adb shell rm -r $DEX_LOCATION >/dev/null 2>&1
+      adb shell mkdir -p $DEX_LOCATION >/dev/null 2>&1
+      adb push $TEST_NAME.jar $DEX_LOCATION >/dev/null 2>&1
+      adb push $TEST_NAME-ex.jar $DEX_LOCATION >/dev/null 2>&1
+    fi
+
+    LD_LIBRARY_PATH=
+    if [ "$ANDROID_ROOT" != "/system" ]; then
+      # Current default installation is dalvikvm 64bits and dex2oat 32bits,
+      # so we can only use LD_LIBRARY_PATH when testing on a local
+      # installation.
+      LD_LIBRARY_PATH=$ANDROID_ROOT/$LIBRARY_DIRECTORY
+    fi
+
+    PUBLIC_LIBS=libart.so:libartd.so
+
+    # Create a script with the command. The command can get longer than the longest
+    # allowed adb command and there is no way to get the exit status from a adb shell
+    # command.
+    cmdline="cd $DEX_LOCATION && \
+             export ANDROID_DATA=$DEX_LOCATION && \
+             export ANDROID_ADDITIONAL_PUBLIC_LIBRARIES=$PUBLIC_LIBS && \
+             export DEX_LOCATION=$DEX_LOCATION && \
+             export ANDROID_ROOT=$ANDROID_ROOT && \
+             $mkdir_cmdline && \
+             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH && \
+             export PATH=$ANDROID_ROOT/bin:$PATH && \
+             $dex2oat_cmdline && \
+             $strip_cmdline && \
+             $dalvikvm_cmdline"
+
+    cmdfile=$(tempfile -p "cmd-" -s "-$TEST_NAME")
+    echo "$cmdline" > $cmdfile
+
+    if [ "$DEV_MODE" = "y" ]; then
+      echo $cmdline
+    fi
+
+    if [ "$QUIET" = "n" ]; then
+      adb push $cmdfile $DEX_LOCATION/cmdline.sh
+    else
+      adb push $cmdfile $DEX_LOCATION/cmdline.sh > /dev/null 2>&1
+    fi
+
+    adb shell sh $DEX_LOCATION/cmdline.sh
+
+    rm -f $cmdfile
+else
+    export ANDROID_PRINTF_LOG=brief
+
+    # By default, and for prebuild dex2oat, we are interested in errors being logged. In dev mode
+    # we want debug messages.
+    if [ "$DEV_MODE" = "y" ]; then
+        export ANDROID_LOG_TAGS='*:d'
+    else
+        export ANDROID_LOG_TAGS='*:e'
+    fi
+
+    export ANDROID_DATA="$DEX_LOCATION"
+    export ANDROID_ROOT="${ANDROID_ROOT}"
+    export LD_LIBRARY_PATH="${ANDROID_ROOT}/lib"
+    export DYLD_LIBRARY_PATH="${ANDROID_ROOT}/lib"
+    export PATH="$PATH:${ANDROID_ROOT}/bin"
+
+    # Temporarily disable address space layout randomization (ASLR).
+    # This is needed on the host so that the linker loads core.oat at the necessary address.
+    export LD_USE_LOAD_BIAS=1
+
+    cmdline="$dalvikvm_cmdline"
+
+    if [ "$TIME_OUT" = "gdb" ]; then
+      if [ `uname` = "Darwin" ]; then
+        # Fall back to timeout on Mac.
+        TIME_OUT="timeout"
+      elif [ "$ISA" = "x86" ]; then
+        # prctl call may fail in 32-bit on an older (3.2) 64-bit Linux kernel. Fall back to timeout.
+        TIME_OUT="timeout"
+      else
+        # Check if gdb is available.
+        gdb --eval-command="quit" > /dev/null 2>&1
+        if [ $? != 0 ]; then
+          # gdb isn't available. Fall back to timeout.
+          TIME_OUT="timeout"
+        fi
+      fi
+    fi
+
+    if [ "$TIME_OUT" = "timeout" ]; then
+      # Add timeout command if time out is desired.
+      #
+      # Note: We use nested timeouts. The inner timeout sends SIGRTMIN+2 (usually 36) to ART, which
+      #       will induce a full thread dump before abort. However, dumping threads might deadlock,
+      #       so the outer timeout sends the regular SIGTERM after an additional minute to ensure
+      #       termination (without dumping all threads).
+      TIME_PLUS_ONE=$(($TIME_OUT_VALUE + 60))
+      cmdline="timeout ${TIME_PLUS_ONE}s timeout -s SIGRTMIN+2 ${TIME_OUT_VALUE}s $cmdline"
+    fi
+
+    if [ "$DEV_MODE" = "y" ]; then
+      echo "$mkdir_cmdline && $dex2oat_cmdline && $strip_cmdline && $cmdline"
+    fi
+
+    cd $ANDROID_BUILD_TOP
+
+    rm -rf ${DEX_LOCATION}/dalvik-cache/
+    $mkdir_cmdline || exit 1
+    $dex2oat_cmdline || { echo "Dex2oat failed." >&2 ; exit 2; }
+    $strip_cmdline || { echo "Strip failed." >&2 ; exit 3; }
+
+    # For running, we must turn off logging when dex2oat or patchoat are missing. Otherwise we use
+    # the same defaults as for prebuilt: everything when --dev, otherwise errors and above only.
+    if [ "$DEV_MODE" = "y" ]; then
+        export ANDROID_LOG_TAGS='*:d'
+    elif [ "$USE_DEX2OAT_AND_PATCHOAT" = "n" ]; then
+        # All tests would log the error of failing dex2oat/patchoat. Be silent here and only
+        # log fatal events.
+        export ANDROID_LOG_TAGS='*:s'
+    else
+        # We are interested in LOG(ERROR) output.
+        export ANDROID_LOG_TAGS='*:e'
+    fi
+
+    if [ "$USE_GDB" = "y" ]; then
+      # When running under gdb, we cannot do piping and grepping...
+      $cmdline "$@"
+    else
+      if [ "$TIME_OUT" != "gdb" ]; then
+        trap 'kill -INT -$pid' INT
+        $cmdline "$@" 2>&1 & pid=$!
+        wait $pid
+        # Add extra detail if time out is enabled.
+        if [ ${PIPESTATUS[0]} = 124 ] && [ "$TIME_OUT" = "timeout" ]; then
+          echo -e "\e[91mTEST TIMED OUT!\e[0m" >&2
+        fi
+      else
+        # With a thread dump that uses gdb if a timeout.
+        trap 'kill -INT -$pid' INT
+        $cmdline "$@" 2>&1 & pid=$!
+        # Spawn a watcher process.
+        ( sleep $TIME_OUT_VALUE && \
+          echo "##### Thread dump using gdb on test timeout" && \
+          ( gdb -q -p $pid --eval-command="info thread" --eval-command="thread apply all bt" \
+                           --eval-command="call exit(124)" --eval-command=quit || \
+            kill $pid )) 2> /dev/null & watcher=$!
+        wait $pid
+        test_exit_status=$?
+        pkill -P $watcher 2> /dev/null # kill the sleep which will in turn end the watcher as well
+        if [ $test_exit_status = 0 ]; then
+          # The test finished normally.
+          exit 0
+        else
+          # The test failed or timed out.
+          if [ $test_exit_status = 124 ]; then
+            # The test timed out.
+            echo -e "\e[91mTEST TIMED OUT!\e[0m" >&2
+          fi
+        fi
+      fi
+    fi
+fi

@@ -1,0 +1,6 @@
+JNI_OnLoad called
+init signal test
+Caught NullPointerException
+Caught StackOverflowError
+signal caught
+Signal test OK
