@@ -11,7 +11,7 @@ Untouched Xposed is kinda a patch that's applied on already built firmwares and 
  - Update `built/target/product/base.mk` to include `libxposed_art` and `XposedBridge` to the main makefile recipes.
  
  ### Where's ART commits?
- Gone `:)`. Actually for sake of simplicity, I've flatted down all commits into a single commit, all rovo89's too.
+ Gone `:)`. Actually for sake of simplicity, I've flattened down all commits into a single commit, all rovo89's too.
  
  ### Looking for diff?
  Here's. https://github.com/abforce/xposed_art_n/commit/1d14337b858cabd184335804b178f16849186f89
