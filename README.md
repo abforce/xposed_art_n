@@ -6,7 +6,7 @@ Untouched Xposed is kinda a patch that's applied on already built firmwares and 
 
 ### How to build a built-in Xposed enabled firmware?
  - Replace original `art/` submodule with this copy.
- - Replace original `frameworks/base/cmds/app_process` with the modified one. (I'll put its link here soon)
+ - Replace original `frameworks/base/cmds/app_process` with [the modified one](https://github.com/abforce/xposed_app_process).
  - Create a prebuilt module that copies `XposedBridge.jar` to `system/framework`.
  - Update `built/target/product/base.mk` to include `libxposed_art` and `XposedBridge` to the main makefile recipes.
  
