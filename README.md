@@ -8,7 +8,7 @@ Untouched Xposed is kinda a patch that's applied on already built firmwares and 
  - Replace original `art/` submodule with this copy.
  - Replace original `frameworks/base/cmds/app_process` with [the modified one](https://github.com/abforce/xposed_app_process).
  - Create a prebuilt module that copies `XposedBridge.jar` to `system/framework`.
- - Update `built/target/product/base.mk` to include `libxposed_art` and `XposedBridge` to the main makefile recipes.
+ - Update `build/target/product/base.mk` to include `libxposed_art` and `XposedBridge` to the main makefile recipes.
  
  ### Where's ART commits?
  Gone `:)`. Actually for sake of simplicity, I've flattened down all commits into a single commit, all rovo89's too.
