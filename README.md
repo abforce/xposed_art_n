@@ -3,7 +3,7 @@ This is `art/` submodule of AOSP 7.1.2 which brings Xposed functionality out-of-
 这个项目是AOSP 7.1.2的一个子模块 `art/`,自带xposed功能。也就是说，不需要用户root设备来安装Xposed。Xposed已经默认安装。
 ### What's the difference? 和rovo89的xposed差异
 Untouched Xposed is kinda a patch that's applied on already built firmwares and then recompiles lots of already compiled `dex` files. But this copy of ART doesn't *recompile* anything. It compiles with Xposed considerations in mind (e.g. disabling method inlining and direct call). This two are similar in sofar as both share the exactly same mechanism to hook methods. Actually I've ported rovo89's commits (of course those relating to hooking) to ART of AOSP version N.
-未修改的xposed有点像是一个patch，作用在已经编译好的固件上。重新编译很多已经编译好的 `dex`文件。但是我的这种ART不会重新编译任何dex
+未修改的xposed有点像是一个patch，作用在已经编译好的固件上，重新编译很多已经编译好的 `dex`文件。但是我的这种份ART不会重新编译任何dex，我的ART在编译的时候就考虑到xposed，（比如 禁止内联函数和直接调用）。内联函数和直接调用大体上说是相似的，因为都采用相同的机制来hook方法。准确的说，我将rovo89的提交，当然这些提交是和hook相关的，移植到AOSP版本Android N上的ART
 ### How to build a built-in Xposed enabled firmware? 怎样编译一个内置支持xposed的固件？
  - Replace original `art/` submodule with this copy. 使用我的版本代替原来的`art/` 子模块
  - Replace original `frameworks/base/cmds/app_process` with [the modified one](https://github.com/abforce/xposed_app_process).使用修改的版本代替原来的`frameworks/base/cmds/app_process`
