@@ -2,7 +2,7 @@
 This is `art/` submodule of AOSP 7.1.2 which brings Xposed functionality out-of-the-box. That's, not requiring users to root their devices to install Xposed. Xposed is installed by default. Please note that you can't use this module on your existing ROMs. This ART should be placed in AOSP source tree, then building the whole ROM.
 
 ### What's the difference?
-Original Xposed is kinda a patch that's applied on already built firmwares and then recompiles lots of already compiled `dex` files. But this copy of ART doesn't *recompile* anything. It on the other hand, compiles system `dex` files at the ROM build time with Xposed considerations in mind (e.g. disabling method inlining and direct call). This two are similar in sofar as both share the exactly same mechanism to hook methods. Actually I've ported rovo89's commits (of course those relating to hooking) to ART of AOSP version N.
+The rovo89's Original Xposed is kinda a patch that's applied on already built firmwares and then recompiles lots of already compiled `dex` files. But this copy of ART doesn't *recompile* anything. It on the other hand, compiles system `dex` files at the ROM build time with Xposed considerations in mind (e.g. disabling method inlining and direct call). This two are similar in sofar as both share the exactly same mechanism to hook methods. Actually I've ported rovo89's commits (of course those relating to hooking) to ART of AOSP version N.
 
 ### How to build a built-in Xposed enabled firmware?
  - Replace original `art/` submodule with this copy.
