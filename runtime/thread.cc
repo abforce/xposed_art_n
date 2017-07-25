@@ -2768,7 +2768,7 @@ class ReferenceMapVisitor : public StackVisitor {
     VisitDeclaringClass(m);
 
     // Process register map (which native and runtime methods don't have)
-    if (!m->IsNative() && !m->IsRuntimeMethod() && (!m->IsProxyMethod() || m->IsConstructor())) {
+    if (!m->IsNative() && !m->IsRuntimeMethod() && !m->IsXposedHookedMethod() && (!m->IsProxyMethod() || m->IsConstructor())) {
       const OatQuickMethodHeader* method_header = GetCurrentOatQuickMethodHeader();
       DCHECK(method_header->IsOptimized());
       auto* vreg_base = reinterpret_cast<StackReference<mirror::Object>*>(
