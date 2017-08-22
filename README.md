@@ -9,17 +9,13 @@ Original Xposed is kinda a patch that's applied on already built firmwares and t
 ### How to build a built-in Xposed enabled firmware?
  - Replace original `art/` submodule with this copy.
  - Replace original `frameworks/base/cmds/app_process` with [the modified one](https://github.com/abforce/xposed_app_process).
+ - Build [edited XposedBridge project](https://github.com/abforce/XposedBridge). That's a copy compatible with Nougat. After building you will find an APK at `build/outputs/apk`, rename to `XposedBridge.jar`.
  - Create a prebuilt module that copies `XposedBridge.jar` to `system/framework`, or manually copy it and run `make snod` to include it in the `system.img`.
+ - Do the last step also for `xposed.prop`. It should be placed at `/system` in the final image.
  - Update `build/target/product/base.mk` to include `libxposed_art` and `XposedBridge` to the main makefile recipes (optional).
  
  ### Where's ART commits?
  Gone! Actually for sake of simplicity, I've flattened down all commits into a single commit, all rovo89's too.
- 
- ### Looking for diff?
- Here's. https://github.com/abforce/xposed_art_n/commit/1d14337b858cabd184335804b178f16849186f89
- 
- ### Notes
- While translating rovo89's commits to Android N, `VisitRoots` method of `art_method-inl.h` had been changed completely, so I was just uncertain whether my port is correct or not. I was just shooting in the dark, to hopefully hit the target!
  
  ### Issues?
  See [issues](https://github.com/abforce/xposed_art_n/issues).
